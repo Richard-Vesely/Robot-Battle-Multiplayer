@@ -1,7 +1,7 @@
 // =========================
 // ZMĚŇ TOHLE PO DEPLOYI
 // =========================
-const SERVER_URL = "http://localhost:3000";
+const SERVER_URL = "robot-battle-multiplayer-server-production.up.railway.app";
 
 const socket = io(SERVER_URL, {
   transports: ["websocket", "polling"]
