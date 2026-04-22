@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Neon Robot Arena Multiplayer</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="menu-screen" id="menuScreen">
+    <div class="menu-glow"></div>
+
+    <h1 class="title">NEON ROBOT ARENA</h1>
+    <p class="subtitle">Online 1v1 — každý hráč ve svém okně prohlížeče</p>
+    <p class="subtitle" id="connectionText">Připojuji se k serveru...</p>
+
+    <div class="selectors" style="grid-template-columns: 1fr;">
+      <div class="player-select">
+        <h2>Vyber si robota</h2>
+        <p class="controls">Pohyb: A/D, skok: W, střelba: Q</p>
+        <div class="robot-grid" id="player1Options"></div>
+      </div>
+    </div>
+
+    <div class="selected-info" style="grid-template-columns: 1fr;">
+      <div class="info-card" id="player1Info">
+        <h3>Tvůj robot</h3>
+        <p>Ještě není vybráno</p>
+      </div>
+    </div>
+
+    <button id="startBtn" class="start-btn" disabled>Potvrdit robota</button>
+  </div>
+
+  <div class="game-ui hidden" id="gameUI">
+    <div class="topbar">
+      <div class="hud-card">
+        <div class="hud-name" id="leftHudName">Hráč 1</div>
+        <div class="hud-robot" id="hudP1Robot">-</div>
+        <div class="hp-bar">
+          <div class="hp-fill hp-fill-green" id="hpFill1"></div>
+        </div>
+        <div class="hud-hp" id="hpText1">0 / 0</div>
+      </div>
+
+      <div class="center-info">
+        <h1>NEON ROBOT ARENA</h1>
+        <p id="centerStatus">Čekám na druhého hráče...</p>
+      </div>
+
+      <div class="hud-card">
+        <div class="hud-name" id="rightHudName">Hráč 2</div>
+        <div class="hud-robot" id="hudP2Robot">-</div>
+        <div class="hp-bar">
+          <div class="hp-fill hp-fill-red" id="hpFill2"></div>
+        </div>
+        <div class="hud-hp" id="hpText2">0 / 0</div>
+      </div>
+    </div>
+
+    <canvas id="gameCanvas" width="1100" height="620"></canvas>
+
+    <div class="bottom-actions">
+      <button id="restartBtn" class="neon-btn">Hrát znovu</button>
+      <button id="backToMenuBtn" class="neon-btn alt">Zpět do menu</button>
+    </div>
+  </div>
+
+  <div class="overlay hidden" id="overlay">
+    <div class="overlay-card">
+      <h2 id="winnerText">Výsledek</h2>
+      <p id="winnerSubtext">Čekám...</p>
+      <div class="overlay-actions">
+        <button id="playAgainBtn" class="neon-btn">Rematch</button>
+        <button id="menuBtn" class="neon-btn alt">Menu</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>
