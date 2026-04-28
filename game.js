@@ -42,6 +42,7 @@ let selectedRobotId = null;
 let mySocketId = null;
 let gameState = null;
 let particles = [];
+let hasConfirmedRobot = false;
 
 const robotTypes = [
   {
@@ -489,7 +490,7 @@ socket.on("state", (state) => {
   gameState = state;
   updateHudFromState();
 
-  if (state.phase === "playing" || state.phase === "selecting" || state.phase === "waiting") {
+  if (state.phase === "playing" || (hasConfirmedRobot && state.phase !== "gameover")) {
     goToGameScreen();
   }
 
@@ -514,6 +515,7 @@ function confirmRobot() {
     robotId: selectedRobotId
   });
 
+  hasConfirmedRobot = true;
   goToGameScreen();
   centerStatus.textContent = "Robot potvrzen. Čekám na druhého hráče...";
 }
@@ -524,6 +526,7 @@ function requestRestart() {
 
 function backToMenu() {
   overlay.classList.add("hidden");
+  hasConfirmedRobot = false;
   goToMenuScreen();
 }
 
