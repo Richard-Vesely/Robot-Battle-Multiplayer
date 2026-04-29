@@ -7,12 +7,39 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <div class="menu-screen" id="menuScreen">
+  <div class="menu-screen" id="lobbyScreen">
     <div class="menu-glow"></div>
 
     <h1 class="title">NEON ROBOT ARENA</h1>
-    <p class="subtitle">Online 1v1 — každý hráč ve svém okně prohlížeče</p>
+    <p class="subtitle">Online 1v1 — vytvoř místnost, nebo se připoj kódem.</p>
     <p class="subtitle" id="connectionText">Připojuji se k serveru...</p>
+
+    <div class="lobby-grid">
+      <div class="lobby-card">
+        <h2>Nová místnost</h2>
+        <p>Vytvoř místnost a pošli kód kamarádovi.</p>
+        <button id="createRoomBtn" class="start-btn">Vytvořit místnost</button>
+      </div>
+
+      <div class="lobby-card">
+        <h2>Připoj se</h2>
+        <p>Zadej čtyřpísmenný kód.</p>
+        <input id="roomCodeInput" class="room-input" type="text" maxlength="4" placeholder="KÓD" autocomplete="off" />
+        <button id="joinRoomBtn" class="start-btn">Připojit se</button>
+        <p class="lobby-error" id="lobbyError"></p>
+      </div>
+    </div>
+  </div>
+
+  <div class="menu-screen hidden" id="menuScreen">
+    <div class="menu-glow"></div>
+
+    <h1 class="title">NEON ROBOT ARENA</h1>
+    <p class="subtitle">
+      Místnost: <span class="room-code" id="menuRoomCode">----</span>
+      &nbsp;•&nbsp; Tvůj slot: <span id="menuSlotLabel">-</span>
+    </p>
+    <p class="subtitle" id="opponentStatusText">Čekám na druhého hráče...</p>
 
     <div class="selectors" style="grid-template-columns: 1fr;">
       <div class="player-select">
@@ -29,7 +56,10 @@
       </div>
     </div>
 
-    <button id="startBtn" class="start-btn" disabled>Potvrdit robota</button>
+    <div class="menu-actions">
+      <button id="startBtn" class="start-btn" disabled>Potvrdit robota</button>
+      <button id="leaveRoomBtn" class="neon-btn alt">Zpět do lobby</button>
+    </div>
   </div>
 
   <div class="game-ui hidden" id="gameUI">
@@ -46,6 +76,7 @@
       <div class="center-info">
         <h1>NEON ROBOT ARENA</h1>
         <p id="centerStatus">Čekám na druhého hráče...</p>
+        <p class="room-line">Místnost: <span class="room-code" id="gameRoomCode">----</span></p>
       </div>
 
       <div class="hud-card">
@@ -62,7 +93,7 @@
 
     <div class="bottom-actions">
       <button id="restartBtn" class="neon-btn">Hrát znovu</button>
-      <button id="backToMenuBtn" class="neon-btn alt">Zpět do menu</button>
+      <button id="backToMenuBtn" class="neon-btn alt">Zpět do lobby</button>
     </div>
   </div>
 
@@ -72,7 +103,7 @@
       <p id="winnerSubtext">Čekám...</p>
       <div class="overlay-actions">
         <button id="playAgainBtn" class="neon-btn">Rematch</button>
-        <button id="menuBtn" class="neon-btn alt">Menu</button>
+        <button id="menuBtn" class="neon-btn alt">Zpět do lobby</button>
       </div>
     </div>
   </div>
