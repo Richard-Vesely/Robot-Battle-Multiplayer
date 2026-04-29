@@ -209,10 +209,10 @@ function createRobotCards() {
 
 function sendInput() {
   socket.emit("input", {
-    left: !!keys["a"],
-    right: !!keys["d"],
-    jump: !!keys["w"],
-    shoot: !!keys["q"]
+    left: !!(keys["a"] || keys["arrowleft"]),
+    right: !!(keys["d"] || keys["arrowright"]),
+    jump: !!(keys["w"] || keys["arrowup"]),
+    shoot: !!(keys["q"] || keys[" "])
   });
 }
 
@@ -291,7 +291,7 @@ function updateHudFromState() {
   } else if (gameState.phase === "selecting") {
     centerStatus.textContent = "Čekám, až oba potvrdí robota...";
   } else if (gameState.phase === "playing") {
-    centerStatus.textContent = "A/D = pohyb, W = skok, Q = střelba";
+    centerStatus.textContent = "Pohyb: A/D nebo šipky • Skok: W nebo ↑ • Střelba: Q nebo mezera";
   } else if (gameState.phase === "gameover") {
     centerStatus.textContent = "Zápas skončil";
   }
