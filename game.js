@@ -54,80 +54,32 @@ const backToMenuBtn = document.getElementById("backToMenuBtn");
 const playAgainBtn = document.getElementById("playAgainBtn");
 const menuBtn = document.getElementById("menuBtn");
 
-// Local state
+// ================= Local state =================
+
 const keys = {};
+let robotTypes = [];               // populated from server "config" event
 let selectedRobotId = null;
 let mySocketId = null;
 let mySlot = null;
 let currentRoomCode = null;
-let gameState = null;
+let gameState = null;              // latest state from server
+let prevPhase = null;
 let particles = [];
+let screenFlashAlpha = 0;
 let hasConfirmedRobot = false;
 
-const robotTypes = [
-  {
-    id: "tank",
-    name: "TANK-X",
-    role: "Těžký robot",
-    description: "Vydrží hodně zásahů, je pomalejší a dává silnější damage.",
-    maxHp: 160,
-    speed: 185,
-    jumpForce: 390,
-    cooldown: 0.45,
-    bulletSpeed: 480,
-    bulletDamage: 18,
-    bulletCount: 1,
-    spread: 0,
-    bodyColor: "#7cff4d"
-  },
-  {
-    id: "scout",
-    name: "SCOUT-Z",
-    role: "Lehký robot",
-    description: "Je rychlý, skáče vysoko, ale má méně životů.",
-    maxHp: 85,
-    speed: 300,
-    jumpForce: 520,
-    cooldown: 0.22,
-    bulletSpeed: 560,
-    bulletDamage: 10,
-    bulletCount: 1,
-    spread: 0,
-    bodyColor: "#00f6ff"
-  },
-  {
-    id: "sniper",
-    name: "SNIPER-V",
-    role: "Dálkový robot",
-    description: "Má rychlé projektily a velký zásah, ale střílí pomaleji.",
-    maxHp: 95,
-    speed: 235,
-    jumpForce: 430,
-    cooldown: 0.7,
-    bulletSpeed: 880,
-    bulletDamage: 28,
-    bulletCount: 1,
-    spread: 0,
-    bodyColor: "#b47cff"
-  },
-  {
-    id: "blaster",
-    name: "BLASTER-Q",
-    role: "Rozptylový robot",
-    description: "Střílí tři projektily najednou a je nebezpečný na blízko.",
-    maxHp: 110,
-    speed: 245,
-    jumpForce: 440,
-    cooldown: 0.52,
-    bulletSpeed: 520,
-    bulletDamage: 9,
-    bulletCount: 3,
-    spread: 0.18,
-    bodyColor: "#ff5bd2"
-  }
-];
+// Smoothed opponent position. Server is authoritative, but we lerp the
+// rendered position toward the latest server position to absorb jitter.
+let renderedOpponent = null;
+const OPPONENT_SMOOTH_TAU_S = 0.05; // 50ms time constant
 
-// ============== Screens ==============
+// Track previous HPs so we can spawn impact particles when damage lands.
+const prevPlayerHp = {};
+
+// Track last input we actually emitted; only re-emit on change.
+let lastInputSent = null;
+
+// ================= Screens =================
 
 function showLobby() {
   lobbyScreen.classList.remove("hidden");
@@ -161,10 +113,11 @@ function resetRobotSelection() {
   `;
 }
 
-// ============== Robot cards ==============
+// ================= Robot cards =================
 
 function createRobotCards() {
   player1Options.innerHTML = "";
+  if (!robotTypes.length) return;
 
   robotTypes.forEach((robot) => {
     const card = document.createElement("div");
@@ -185,7 +138,6 @@ function createRobotCards() {
 
     card.addEventListener("click", () => {
       selectedRobotId = robot.id;
-
       document.querySelectorAll("#player1Options .robot-card").forEach((c) => {
         c.classList.remove("selected-green");
         if (c.dataset.robotId === robot.id) c.classList.add("selected-green");
@@ -197,7 +149,6 @@ function createRobotCards() {
         <p>${robot.description}</p>
         <p>HP: ${robot.maxHp} | Rychlost: ${robot.speed} | Skok: ${robot.jumpForce} | Damage: ${robot.bulletDamage}</p>
       `;
-
       startBtn.disabled = false;
     });
 
@@ -205,15 +156,37 @@ function createRobotCards() {
   });
 }
 
-// ============== Network ==============
+// ================= Network =================
 
-function sendInput() {
-  socket.emit("input", {
+function readInput() {
+  return {
     left: !!(keys["a"] || keys["arrowleft"]),
     right: !!(keys["d"] || keys["arrowright"]),
     jump: !!(keys["w"] || keys["arrowup"]),
     shoot: !!(keys["q"] || keys[" "])
-  });
+  };
+}
+
+function sendInput(force) {
+  const cur = readInput();
+  if (
+    !force &&
+    lastInputSent &&
+    cur.left === lastInputSent.left &&
+    cur.right === lastInputSent.right &&
+    cur.jump === lastInputSent.jump &&
+    cur.shoot === lastInputSent.shoot
+  ) return;
+  lastInputSent = cur;
+  socket.emit("input", cur);
+}
+
+function clearAllKeys() {
+  let any = false;
+  for (const k of Object.keys(keys)) {
+    if (keys[k]) { keys[k] = false; any = true; }
+  }
+  if (any) sendInput();
 }
 
 function emitCreateRoom() {
@@ -237,6 +210,9 @@ function emitLeaveRoom() {
   mySlot = null;
   hasConfirmedRobot = false;
   gameState = null;
+  renderedOpponent = null;
+  prevPhase = null;
+  Object.keys(prevPlayerHp).forEach((k) => delete prevPlayerHp[k]);
   resetRobotSelection();
   showLobby();
 }
@@ -251,11 +227,10 @@ function confirmRobot() {
 
 function requestRestart() {
   socket.emit("requestRestart");
-  overlay.classList.add("hidden");
   centerStatus.textContent = "Čeká se na druhého hráče (rematch)...";
 }
 
-// ============== HUD ==============
+// ================= HUD =================
 
 function updateHudFromState() {
   if (!gameState) return;
@@ -311,7 +286,13 @@ function updateOpponentStatus() {
   }
 }
 
-// ============== Particles + drawing ==============
+function updateOverlayButtons() {
+  if (!gameState) return;
+  const both = gameState.players.length >= 2;
+  playAgainBtn.style.display = both ? "" : "none";
+}
+
+// ================= Particles + screen flash =================
 
 function spawnHitParticles(x, y, color) {
   for (let i = 0; i < 8; i++) {
@@ -337,6 +318,43 @@ function updateParticles(dt) {
     if (p.life <= 0) particles.splice(i, 1);
   }
 }
+
+function updateScreenFlash(dt) {
+  if (screenFlashAlpha > 0) screenFlashAlpha = Math.max(0, screenFlashAlpha - dt * 2.0);
+}
+
+// ================= Opponent position smoothing =================
+
+function updateRenderedOpponent(dt) {
+  if (!gameState) { renderedOpponent = null; return; }
+  const opp = gameState.players.find((p) => p.id !== mySocketId);
+  if (!opp) { renderedOpponent = null; return; }
+
+  if (!renderedOpponent || renderedOpponent.id !== opp.id) {
+    renderedOpponent = { ...opp };
+    return;
+  }
+
+  // Frame-rate-independent low-pass filter toward the server position.
+  const alpha = 1 - Math.exp(-dt / OPPONENT_SMOOTH_TAU_S);
+  renderedOpponent.x += (opp.x - renderedOpponent.x) * alpha;
+  renderedOpponent.y += (opp.y - renderedOpponent.y) * alpha;
+
+  // Discrete fields: take latest immediately.
+  renderedOpponent.dir = opp.dir;
+  renderedOpponent.hp = opp.hp;
+  renderedOpponent.maxHp = opp.maxHp;
+  renderedOpponent.spawnInvuln = opp.spawnInvuln;
+  renderedOpponent.bodyColor = opp.bodyColor;
+  renderedOpponent.typeId = opp.typeId;
+  renderedOpponent.name = opp.name;
+  renderedOpponent.role = opp.role;
+  renderedOpponent.width = opp.width;
+  renderedOpponent.height = opp.height;
+  renderedOpponent.slot = opp.slot;
+}
+
+// ================= Drawing =================
 
 function drawBackground() {
   const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
@@ -413,6 +431,15 @@ function drawParticles() {
   }
 }
 
+function drawScreenFlash() {
+  if (screenFlashAlpha > 0) {
+    ctx.save();
+    ctx.fillStyle = `rgba(255, 32, 80, ${screenFlashAlpha})`;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.restore();
+  }
+}
+
 function drawRobot(player) {
   if (!player) return;
   const x = player.x;
@@ -425,6 +452,12 @@ function drawRobot(player) {
   ctx.translate(x, y);
   ctx.shadowBlur = 22;
   ctx.shadowColor = bodyColor;
+
+  // Spawn invuln: blink at ~10Hz.
+  if (player.spawnInvuln && player.spawnInvuln > 0) {
+    const blink = Math.floor(performance.now() / 50) % 2 === 0;
+    ctx.globalAlpha = blink ? 0.45 : 1.0;
+  }
 
   if (typeId === "tank") {
     ctx.fillStyle = bodyColor;
@@ -514,21 +547,49 @@ function drawScene() {
   drawGrid();
   if (!gameState) return;
   drawPlatforms();
-  drawParticles();
   drawBullets();
-  const p1 = gameState.players.find((p) => p.slot === 1);
-  const p2 = gameState.players.find((p) => p.slot === 2);
-  if (p1) drawRobot(p1);
-  if (p2) drawRobot(p2);
+
+  const me = gameState.players.find((p) => p.id === mySocketId);
+  const opp = renderedOpponent;
+  const players = [];
+  if (me) players.push(me);
+  if (opp) players.push(opp);
+  players.sort((a, b) => a.slot - b.slot);
+  for (const p of players) drawRobot(p);
+
+  drawParticles();
+  drawScreenFlash();
 }
 
 function showWinner(data) {
-  winnerText.textContent = data.winnerSlot ? `Vyhrál Hráč ${data.winnerSlot}!` : "Konec zápasu";
+  winnerText.textContent = data.winnerSlot
+    ? (data.winnerSlot === mySlot ? "Vyhrál jsi!" : `Vyhrál Hráč ${data.winnerSlot}`)
+    : "Konec zápasu";
   winnerSubtext.textContent = data.message || "Zápas skončil.";
   overlay.classList.remove("hidden");
 }
 
-// ============== Socket events ==============
+// ================= Hit feedback (HP delta detection) =================
+
+function detectHpChanges(state) {
+  for (const p of state.players) {
+    const prev = prevPlayerHp[p.id];
+    if (prev !== undefined && p.hp < prev) {
+      const isMine = p.id === mySocketId;
+      const color = isMine ? "#ff4d6d" : (p.bodyColor || "#ff2bd6");
+      spawnHitParticles(p.x + p.width / 2, p.y + p.height / 2, color);
+      if (isMine) screenFlashAlpha = 0.35;
+    }
+    prevPlayerHp[p.id] = p.hp;
+  }
+  // Drop entries for players no longer present.
+  const liveIds = new Set(state.players.map((p) => p.id));
+  for (const id of Object.keys(prevPlayerHp)) {
+    if (!liveIds.has(id)) delete prevPlayerHp[id];
+  }
+}
+
+// ================= Socket events =================
 
 socket.on("connect", () => {
   mySocketId = socket.id;
@@ -544,10 +605,20 @@ socket.on("disconnect", () => {
   joinRoomBtn.disabled = true;
 });
 
+socket.on("config", (cfg) => {
+  if (cfg && Array.isArray(cfg.robotTypes)) {
+    robotTypes = cfg.robotTypes;
+    createRobotCards();
+  }
+});
+
 socket.on("roomJoined", ({ code, slot }) => {
   currentRoomCode = code;
   mySlot = slot;
   hasConfirmedRobot = false;
+  prevPhase = null;
+  renderedOpponent = null;
+  Object.keys(prevPlayerHp).forEach((k) => delete prevPlayerHp[k]);
   resetRobotSelection();
 
   menuRoomCode.textContent = code;
@@ -562,28 +633,32 @@ socket.on("roomError", ({ message }) => {
 });
 
 socket.on("state", (state) => {
-  const oldBullets = gameState ? gameState.bullets.length : 0;
-  const newBullets = state.bullets.length;
+  // Detect HP drops for impact feedback BEFORE swapping gameState.
+  detectHpChanges(state);
 
-  if (newBullets < oldBullets && state.bullets[0]) {
-    spawnHitParticles(state.bullets[0].x, state.bullets[0].y, state.bullets[0].color);
+  // On phase transition to playing, reset interpolation and force-send the
+  // current input state (player might already be holding keys).
+  if (state.phase === "playing" && prevPhase !== "playing") {
+    renderedOpponent = null;
+    sendInput(true);
   }
 
   gameState = state;
+  prevPhase = state.phase;
   updateHudFromState();
   updateOpponentStatus();
+  updateOverlayButtons();
 
   if (state.phase === "playing" || (hasConfirmedRobot && state.phase !== "gameover")) {
     showGameScreen();
   }
 
-  if (state.phase === "gameover" && state.winner) {
-    showWinner(state.winner);
+  if (state.phase === "playing") {
+    overlay.classList.add("hidden");
   }
 
-  // If we got booted (e.g. server restarted, lost the room), drop back to lobby.
-  if (state.code && currentRoomCode && state.code !== currentRoomCode) {
-    // Should not happen — we only receive state for our own room.
+  if (state.phase === "gameover" && state.winner) {
+    showWinner(state.winner);
   }
 });
 
@@ -592,7 +667,7 @@ socket.on("serverMessage", (text) => {
   opponentStatusText.textContent = text;
 });
 
-// ============== Wire up UI ==============
+// ================= UI wiring =================
 
 createRoomBtn.addEventListener("click", emitCreateRoom);
 joinRoomBtn.addEventListener("click", emitJoinRoom);
@@ -615,9 +690,9 @@ window.addEventListener("keydown", (e) => {
   if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space"].includes(e.code)) {
     e.preventDefault();
   }
-  // Don't capture WASD/Q while typing the room code.
   if (document.activeElement === roomCodeInput) return;
   const key = e.key.toLowerCase();
+  if (keys[key]) return; // ignore key-repeat
   keys[key] = true;
   sendInput();
 });
@@ -628,8 +703,15 @@ window.addEventListener("keyup", (e) => {
   sendInput();
 });
 
-createRobotCards();
+// Stop "stuck key" bugs when the window loses focus mid-press.
+window.addEventListener("blur", clearAllKeys);
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) clearAllKeys();
+});
+
 showLobby();
+
+// ================= Render loop =================
 
 let lastTime = performance.now();
 
@@ -637,6 +719,8 @@ function frame(now) {
   const dt = Math.min((now - lastTime) / 1000, 0.033);
   lastTime = now;
   updateParticles(dt);
+  updateScreenFlash(dt);
+  updateRenderedOpponent(dt);
   drawScene();
   requestAnimationFrame(frame);
 }
